@@ -6,6 +6,9 @@ import json
 import requests
 from datetime import datetime, timedelta
 
+reload(sys)
+sys.setdefaultencoding('utf8')  # pylint: disable=no-member
+
 # Disable insecure warnings
 requests.packages.urllib3.disable_warnings()
 
@@ -82,7 +85,7 @@ SERVICES_HEADERS = ['ID', 'Name', 'Status', 'Created At', 'Integration']
 NOTIFICATION_RULES_HEADERS = ['ID', 'Type', 'Urgency', 'Notification timeout(minutes)']
 SCHEDULES_HEADERS = ['ID', 'Name', 'Today', 'Time Zone', 'Escalation Policy', 'Escalation Policy ID']
 USERS_ON_CALL_NOW_HEADERS = ['ID', 'Email', 'Name', 'Role', 'User Url', 'Time Zone']
-INCIDENTS_HEADERS = ['ID', 'Title', 'Description', 'Status', 'Created On', 'Urgency', 'Html Url',
+INCIDENTS_HEADERS = ['ID', 'Title', 'Description', 'Status', 'Created On', 'Urgency', 'Html Url', 'Incident key',
                      'Assigned To User', 'Service ID', 'Service Name', 'Escalation Policy', 'Last Status Change On',
                      'Last Status Change By', 'Number Of Escalations', 'Resolved By User', 'Resolve Reason']
 
@@ -126,7 +129,7 @@ def unicode_to_str_recur(obj):
     elif isinstance(obj, list):
         obj = map(unicode_to_str_recur, obj)
     elif isinstance(obj, unicode):
-        obj = obj.encode('utf-8')
+        obj = obj.encode('utf-8', 'ignore')
     return obj
 
 
@@ -236,6 +239,8 @@ def parse_incident_data(incidents):
         context['created_at'] = output['Created On'] = incident.get('created_at')
         context['urgency'] = output['Urgency'] = incident.get('urgency', '')
         output['Html Url'] = incident.get('html_url')
+        context['incident_key'] = incident.get('incident_key')
+        output['Incident key'] = incident.get('incident_key')
 
         if len(incident.get('assignments', [])) > 0:
             output['Assigned To User'] = incident['assignments'][0].get('assignee', {}).get('name')
@@ -530,7 +535,7 @@ def configure_status(status='triggered,acknowledged'):
     return status_request
 
 
-def get_incidents_command(since=None, until=None, status='triggered,acknowledged', sortBy=None):
+def get_incidents_command(since=None, until=None, status='triggered,acknowledged', sortBy=None, incident_key=None):
     """Get incidents command."""
     param_dict = {}
     if since is not None:
@@ -539,6 +544,8 @@ def get_incidents_command(since=None, until=None, status='triggered,acknowledged
         param_dict['until'] = until
     if sortBy is not None:
         param_dict['sortBy'] = sortBy
+    if incident_key:
+        param_dict['incident_key'] = incident_key
 
     url = SERVER_URL + GET_INCIDENTS_SUFFIX + configure_status(status)
     res = http_request('GET', url, param_dict)
@@ -715,36 +722,39 @@ def get_service_keys():
 
 ''' EXECUTION CODE '''
 
-LOG('command is %s' % (demisto.command(), ))
 
-try:
-    if demisto.command() == 'test-module':
-        test_module()
-    elif demisto.command() == 'fetch-incidents':
-        fetch_incidents()
-    elif demisto.command() == 'PagerDuty-incidents':
-        demisto.results(get_incidents_command(**demisto.args()))
-    elif demisto.command() == 'PagerDuty-submit-event':
-        demisto.results(submit_event_command(**demisto.args()))
-    elif demisto.command() == 'PagerDuty-get-users-on-call':
-        demisto.results(get_on_call_users_command(**demisto.args()))
-    elif demisto.command() == 'PagerDuty-get-all-schedules':
-        demisto.results(get_all_schedules_command(**demisto.args()))
-    elif demisto.command() == 'PagerDuty-get-users-on-call-now':
-        demisto.results(get_on_call_now_users_command(**demisto.args()))
-    elif demisto.command() == 'PagerDuty-get-contact-methods':
-        demisto.results(get_users_contact_methods_command(**demisto.args()))
-    elif demisto.command() == 'PagerDuty-get-users-notification':
-        demisto.results(get_users_notification_command(**demisto.args()))
-    elif demisto.command() == 'PagerDuty-resolve-event':
-        demisto.results(resolve_event(**demisto.args()))
-    elif demisto.command() == 'PagerDuty-acknowledge-event':
-        demisto.results(acknowledge_event(**demisto.args()))
-    elif demisto.command() == 'PagerDuty-get-incident-data':
-        demisto.results(get_incident_data())
-    elif demisto.command() == 'PagerDuty-get-service-keys':
-        demisto.results(get_service_keys())
+def main():
+    LOG('command is %s' % (demisto.command(), ))
+    try:
+        if demisto.command() == 'test-module':
+            test_module()
+        elif demisto.command() == 'fetch-incidents':
+            fetch_incidents()
+        elif demisto.command() == 'PagerDuty-incidents':
+            demisto.results(get_incidents_command(**demisto.args()))
+        elif demisto.command() == 'PagerDuty-submit-event':
+            demisto.results(submit_event_command(**demisto.args()))
+        elif demisto.command() == 'PagerDuty-get-users-on-call':
+            demisto.results(get_on_call_users_command(**demisto.args()))
+        elif demisto.command() == 'PagerDuty-get-all-schedules':
+            demisto.results(get_all_schedules_command(**demisto.args()))
+        elif demisto.command() == 'PagerDuty-get-users-on-call-now':
+            demisto.results(get_on_call_now_users_command(**demisto.args()))
+        elif demisto.command() == 'PagerDuty-get-contact-methods':
+            demisto.results(get_users_contact_methods_command(**demisto.args()))
+        elif demisto.command() == 'PagerDuty-get-users-notification':
+            demisto.results(get_users_notification_command(**demisto.args()))
+        elif demisto.command() == 'PagerDuty-resolve-event':
+            demisto.results(resolve_event(**demisto.args()))
+        elif demisto.command() == 'PagerDuty-acknowledge-event':
+            demisto.results(acknowledge_event(**demisto.args()))
+        elif demisto.command() == 'PagerDuty-get-incident-data':
+            demisto.results(get_incident_data())
+        elif demisto.command() == 'PagerDuty-get-service-keys':
+            demisto.results(get_service_keys())
+    except Exception as e:
+        return_error(e)
 
 
-except Exception as e:
-    return_error(e)
+if __name__ in ['__main__', '__builtin__', 'builtins']:
+    main()
